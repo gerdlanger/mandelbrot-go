@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -8,20 +9,22 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"strconv"
 	"time"
 )
 
+// MyImage defines image buffer
 type MyImage struct {
 	Xsize, Ysize int
 	XYrect       image.Rectangle
 	buf          [][]color.Color
 }
 
+// MyPixel is used to respond from goroutines towards main about a calculated pixel
 type MyPixel struct {
 	X, Y, Iter int
 }
 
+// ImgRect defines real and imaginary boundaries
 type ImgRect struct {
 	reMin, reMax float64
 	imMin, imMax float64
@@ -57,98 +60,92 @@ func main() {
 	radius2 := radius * radius
 	maxIter := 1000
 
-	args := os.Args[1:]
-	argc := len(args)
-	for idx := 0; idx < argc; idx++ {
-		switch arg := args[idx]; arg {
-		case "h", "?":
-			fmt.Println("args:")
-			fmt.Println("-c <num> => limit number of concurrent routines")
-			fmt.Println("-p <num> => for NumProcs")
-			fmt.Printf("-i <num> => max iteration (def=%d)\n", maxIter)
-			fmt.Println("-s <size> => <size> is one of: (s) small, (xs) extra small, (tiny), (vga) =640x480, (hdmi)=1920x1080 ")
-			fmt.Printf("-r <num> => select alternative image ranges (0-%d)\n", len(examples))
-		case "-c":
-			idx++
-			num, err := extractArg(args[idx])
-			if err == nil {
-				switch num {
-				case 1, 2, 3, 5:
-					goXs, goYs = 1, num
-				case 4, 6, 8, 10, 14:
-					goXs, goYs = 2, num/2
-				case 9, 15:
-					goXs, goYs = 3, num/3
-				case 12, 16, 32:
-					goXs, goYs = 4, num/4
-				case 64, 128:
-					goXs, goYs = 8, num/8
-				case 256:
-					goXs, goYs = 16, 16
-				case 100:
-					goXs, goYs = 10, 10
-				case 1000:
-					goXs, goYs = 50, 20
-				default:
-					goXs, goYs = num, 1
-				}
-				fmt.Printf("c(%d) => x*y=%d*%d\n", num, goXs, goYs)
-			}
-		case "-p":
-			idx++
-			num, err := extractArg(args[idx])
-			if err == nil {
-				runtime.GOMAXPROCS(num)
-				fmt.Printf("p(%d) => maxprocs=%d\n", num, num)
-			}
-		case "-i":
-			idx++
-			num, err := extractArg(args[idx])
-			if err == nil {
-				maxIter = num
-				fmt.Printf("i(%d)\n", num)
-			}
-		case "-r":
-			idx++
-			num, err := strconv.Atoi(args[idx])
-			if err == nil && num >= 0 && num < len(examples) {
-				reMin, reMax = examples[num].reMin, examples[num].reMax
-				imMin, imMax = examples[num].imMin, examples[num].imMax
-				fmt.Printf("r(%d)\n", num)
-			} else {
-				fmt.Println("r out of range:", num)
-			}
-		case "-s":
-			idx++
-			switch size := args[idx]; size {
-			case "s":
-				width /= 2
-				height /= 2
-				fmt.Println("small pic")
-			case "xs":
-				width /= 4
-				height /= 4
-				fmt.Println("extra small pic")
-			case "vga":
-				width = 640
-				height = 480
-				fmt.Println("vga pic")
-			case "hdmi":
-				width = 1920
-				height = 1080
-				fmt.Println("hdmi pic")
-			case "tiny":
-				width = 320
-				height = 200
-				fmt.Println("tiny pic")
-			default:
-				fmt.Println("unknown size", size)
-			}
+	// Define command line args
+
+	concurPtr := flag.Int("c", numProcs, "limit number of concurrent routines")
+	numprocPtr := flag.Int("p", numProcs, "for NumProcs")
+	iterPtr := flag.Int("i", maxIter, "max iterations")
+	sizePtr := flag.String("s", "std", "one of: (s) small, (xs) extra small, (tiny), (vga) =640x480, (hdmi)=1920x1080")
+	rangePtr := flag.Int("r", 0, fmt.Sprintf("select alternative image ranges (0-%d)", len(examples)))
+
+	flag.Parse()
+
+	// Handle command line arguments
+
+	if num := *concurPtr; num != numProcs {
+		switch *concurPtr {
+		case 1, 2, 3, 5:
+			goXs, goYs = 1, num
+		case 4, 6, 8, 10, 14:
+			goXs, goYs = 2, num/2
+		case 9, 15:
+			goXs, goYs = 3, num/3
+		case 12, 16, 32:
+			goXs, goYs = 4, num/4
+		case 64, 128:
+			goXs, goYs = 8, num/8
+		case 256:
+			goXs, goYs = 16, 16
+		case 100:
+			goXs, goYs = 10, 10
+		case 1000:
+			goXs, goYs = 50, 20
 		default:
-			fmt.Println("unknown:", args, ". Use h for help")
+			goXs, goYs = num, 1
+		}
+		fmt.Printf("c(%d) => x*y=%d*%d\n", num, goXs, goYs)
+	}
+
+	if *numprocPtr != numProcs {
+		runtime.GOMAXPROCS(*numprocPtr)
+		fmt.Printf("p(%d) => maxprocs=%d\n", *numprocPtr, *numprocPtr)
+	}
+
+	if *iterPtr != maxIter {
+		maxIter = *iterPtr
+		fmt.Printf("i(%d)\n", *iterPtr)
+	}
+
+	if *sizePtr != "std" {
+		switch *sizePtr {
+		case "s", "small":
+			width /= 2
+			height /= 2
+			fmt.Println("small pic")
+		case "xs":
+			width /= 4
+			height /= 4
+			fmt.Println("extra small pic")
+		case "vga":
+			width = 640
+			height = 480
+			fmt.Println("vga pic")
+		case "hdmi":
+			width = 1920
+			height = 1080
+			fmt.Println("hdmi pic")
+		case "tiny":
+			width = 320
+			height = 200
+			fmt.Println("tiny pic")
+		default:
+			fmt.Println("unknown size", *sizePtr)
 		}
 	}
 
+	if *rangePtr != 0 {
+		if num := *rangePtr; num >= 0 && num < len(examples) {
+			reMin, reMax = examples[num].reMin, examples[num].reMax
+			imMin, imMax = examples[num].imMin, examples[num].imMax
+			fmt.Printf("r(%d)\n", num)
+		} else {
+			fmt.Println("r out of range:", num)
+		}
+	}
+
+	// calculate number of concurrent routines and create channels for
+	// pixels => responses from goroutines to main about calculated pixels
+	// ready  => indicate a goroutine has finished its pixels
 	gos := goXs * goYs
 	pixels := make(chan MyPixel)
 	ready := make(chan MyPixel)
@@ -172,6 +169,7 @@ func main() {
 	}
 	fmt.Println("GoRoutines started:", runtime.NumGoroutine()-initialGos)
 
+	// main-loop waits for input via "pixels" and for goroutines finished ("ready")
 	running := gos
 	for running > 0 {
 		select {
@@ -193,25 +191,21 @@ func main() {
 		}
 	}
 
+	// some info about timing
 	duration := time.Now().Sub(start)
 	fmt.Println("took: ", duration)
 
 	txt := fmt.Sprintf("_%dx%d_%dx%d_%4.2f", width, height, goXs, goYs, duration.Seconds())
 
+	// sava imanges
 	save(img, "")
 	save(img, txt)
 
+	// Done :-)
 	fmt.Println("done.")
 }
 
-func extractArg(arg string) (int, error) {
-	num, err := strconv.Atoi(arg)
-	if err != nil {
-		fmt.Println("invalid i:", arg)
-	}
-	return num, err
-}
-
+// sava a calculated image
 func save(img image.Image, txt string) error {
 	name := "image" + txt + ".png"
 	f, err := os.Create(name)
@@ -233,6 +227,7 @@ func save(img image.Image, txt string) error {
 	return err
 }
 
+// calculate a sub-range within the complete screen (real+imaginary)
 func calculateRange(size, idx, total int, min, max float64) (pos, dist int, val1, val2 float64) {
 	dSize := size / total
 	delta := max - min
@@ -286,7 +281,7 @@ func Julia(x, y, xadd, yadd, radius2 float64, maxIter int) int {
 	return maxIter - remain
 }
 
-// Apfel2 caluclates an AppleMan
+// Apfel2 caluclates an AppleMan ... a bit more int-based, but not much difference in performance (?)
 func Apfel2(pixel, ready chan MyPixel, reMin, imMin, reMax, imMax, max2 float64, xoff, yoff, xs, ys, maxIter int) {
 
 	imStep := (imMax - imMin) / float64(ys)
